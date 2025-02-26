@@ -1,0 +1,6 @@
+include:
+    - ./treafik/docker-compose.yml
+
+networks:
+    proxy:
+        name: proxy
