@@ -1,78 +1,76 @@
 services:
-    traefik:
-        image: traefik:latest
-        container_name: traefik
-        security_opt:
-            - no-new-privileges:true
-        ports:
-            - "80:80"
-            - "443:443"
-        volumes:
-            - /var/run/docker.sock:/var/run/docker.sock:ro
-            - traefik_data:/etc/traefik
-        environment:
-            - CF_API_EMAIL=${CF_API_EMAIL}
-            - CF_API_KEY=${CF_API_KEY}
-        networks:
-            - proxy
-        labels:
-            # Enable Traefik Dashboard
-            - "traefik.enable=true"
-            - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN_MAIN}`)"
-            - "traefik.http.routers.dashboard.service=api@internal"
-            - "traefik.http.routers.dashboard.entrypoints=websecure"
-            - "traefik.http.routers.dashboard.tls=true"
-
-            # Global Configuration
-            - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-
-            # Entrypoints
-            - "traefik.http.entrypoints.web.address=:80"
-            - "traefik.http.entrypoints.websecure.address=:443"
-
-            # Default SSL Configuration
-            - "traefik.http.routers.dashboard.tls.certresolver=cloudflare"
-            - "traefik.http.routers.dashboard.tls.domains[0].main=${DOMAIN_MAIN}"
-            - "traefik.http.routers.dashboard.tls.domains[0].sans=${DOMAIN_SANS}"
-
-            # Global HTTPS Redirect
-            - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
-            - "traefik.http.routers.http-catchall.entrypoints=web"
-            - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
-
-            # Traefik Configuration
-            - "traefik.enable.api=true"
-            - "traefik.enable.api.dashboard=true"
-            - "traefik.enable.api.insecure=false"
-
-            # Certificate Resolver Configuration
-            - "traefik.certificatesresolvers.cloudflare.acme.dnschallenge=true"
-            - "traefik.certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
-            - "traefik.certificatesresolvers.cloudflare.acme.email=${CF_API_EMAIL}"
-            - "traefik.certificatesresolvers.cloudflare.acme.storage=/acme.json"
-        network_mode: service:tailscale
-        depends_on:
-            - tailscale
-    tailscale:
-        image: tailscale/tailscale:latest
-        container_name: tailscale
-        hostname: traefik-tailscale
-        volumes:
-            - tailscale_data:/var/lib/tailscale
-        environment:
-            - TS_AUTH_KEY=${TAILSCALE_AUTH_KEY}
-            - TS_STATE_DIR=/var/lib/tailscale
-            # Optional settings
-            - TS_EXTRA_ARGS=--advertise-routes=192.168.0.0/24 --accept-routes
-        cap_add:
-            - NET_ADMIN
-            - NET_RAW
-        restart: unless-stopped
-        networks:
-            - proxy
-
+  tailscale:
+    image: tailscale/tailscale:v1.80
+    container_name: tailscale
     volumes:
-        traefik_data:
-            name: traefik_data
-        tailscale_data:
-            name: tailscale_data
+      - tailscale_data:/var/lib/tailscale
+    environment:
+      - TS_AUTH_KEY=${TAILSCALE_AUTH_KEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Optional settings
+      #- TS_EXTRA_ARGS=--advertise-routes=192.168.0.0/24 --accept-routes
+    networks:
+      - proxy
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    hostname: traefik-tailscale
+
+  traefik:
+    image: traefik:3
+    container_name: traefik
+    depends_on:
+      - tailscale
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_data:/etc/traefik
+    environment:
+      - CF_API_EMAIL=${CF_API_EMAIL}
+      - CF_API_KEY=${CF_API_KEY}
+    network_mode: service:tailscale
+    command:
+      # Docker provider configuration
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=proxy"
+      # Other configurations as needed
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Certificate Resolver
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.cloudflare.acme.email=${CF_API_EMAIL}"
+      - "--certificatesresolvers.cloudflare.acme.storage=/etc/traefik/acme.json"
+      #- "--certificatesresolvers.cloudflare.acme.caserver=https://acme-v02.api.letsencrypt.org/directory" # production (default)
+      - "--certificatesresolvers.cloudflare.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory" # staging (testing)
+    labels:
+      # Enable Traefik Dashboard
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN_MAIN}`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+
+      # Global Configuration
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+
+      # Default SSL Configuration
+      - "traefik.http.routers.dashboard.tls.certresolver=cloudflare"
+      - "traefik.http.routers.dashboard.tls.domains[0].main=${DOMAIN_MAIN}"
+      - "traefik.http.routers.dashboard.tls.domains[0].sans=${DOMAIN_SANS}"
+
+      # Global HTTPS Redirect
+      - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  traefik_data:
+    name: traefik_data
+  tailscale_data:
+    name: tailscale_data
