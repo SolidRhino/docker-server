@@ -1,6 +1,7 @@
+name: services
 include:
-    - ./treafik/docker-compose.yml
+  - ./treafik/docker-compose.yml
 
 networks:
-    proxy:
-        name: proxy
+  proxy:
+    name: proxy
